@@ -1,7 +1,7 @@
 # src/viz_tools.py - Dashboard tools handler
 from typing import Dict, Any
 from src.viz_code_generator import VizCodeGenerator
-from src.viz_code_executor import safe_execute_viz_code
+from src.viz_code_executor import VizCodeExecutor
 from src.tools.viz_exp_store import VizExperimentStore
 
 class VizTools:
@@ -10,6 +10,7 @@ class VizTools:
     def __init__(self, store: VizExperimentStore):
         self.store = store
         self.code_gen = VizCodeGenerator()
+        self.code_execute = VizCodeExecutor()
         self.global_state = {}  # Persistent state across tool calls
     
     def get_tool_definitions(self):
@@ -148,7 +149,7 @@ class VizTools:
         code = self.code_gen.generate_code(tool_name, state_info, **kwargs)
         
         # Execute the generated code
-        result = safe_execute_viz_code(code, self.global_state)
+        result = self.code_execute.execute_code(code, self.global_state)
         
         # Update global state with new variables
         if result['success']:
@@ -166,44 +167,27 @@ class VizTools:
         
         # Save experiment
         self.store.save_experiment(experiment_data)
-        
+
         # Format response for user
         if result['success']:
-            output = f"✓ {tool_name} completed successfully\n\n"
+            output_parts = [f"✓ {tool_name} completed successfully\n"]
+        
+            # Add dashboard file location if available
+            if result.get("dashboard_file"):
+                output_parts.append(f"📊 Dashboard saved to: {result['dashboard_file']}\n")
             
-            # Add result details
-            if result['results']:
-                for key, value in result['results'].items():
-                    if key == 'message':
-                        output += f"{value}\n"
-                    elif key == 'error':
-                        output += f"Error: {value}\n"
-                    elif isinstance(value, dict):
-                        output += f"\n{key}:\n"
-                        for k, v in value.items():
-                            output += f"  {k}: {v}\n"
-                    elif isinstance(value, list) and len(value) > 10:
-                        output += f"{key}: {len(value)} items\n"
-                    elif isinstance(value, (list, tuple)):
-                        output += f"{key}: {value}\n"
-                    else:
-                        output += f"{key}: {value}\n"
+            if result.get("dashboard"):
+                output_parts.append(f"\ndashboard: {result['dashboard']}")
             
-            # Show generated code for transparency
-            if tool_name in ['create_dashboard', 'add_charts', 'customize_dashboard']:
-                output += f"\n--- Generated Code Preview ---\n"
-                code_lines = code.split('\n')[:15]  # Show first 15 lines
-                output += '\n'.join(code_lines)
-                total_lines = len(code.split('\n'))
-                if total_lines > 15:
-                    remaining_lines = total_lines - 15
-                    output += f"\n... ({remaining_lines} more lines)"
-                output += "\n--- End Preview ---\n"
+            if result.get("charts"):
+                output_parts.append(f"\ncharts: {result['charts']}")
             
-            return output
+            if result.get("widgets"):
+                output_parts.append(f"\nwidgets: {result['widgets']}")
+            
+            if result.get("output"):
+                output_parts.append(f"\n\nOutput:\n{result['output']}")
+            
+            return "".join(output_parts)
         else:
-            error_output = f"✗ Error in {tool_name}:\n{result['error']}\n\n"
-            error_output += f"--- Generated Code ---\n{code}\n--- End Code ---\n\n"
-            if result.get('traceback'):
-                error_output += f"--- Traceback ---\n{result['traceback']}\n"
-            return error_output
+            return f"✗ {tool_name} failed: {result['error']}\n\nTraceback:\n{result.get('traceback', '')}"
