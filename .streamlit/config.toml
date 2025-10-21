@@ -1,0 +1,8 @@
+[server]
+maxUploadSize = 5000
+# This sets the limit to 5000 MB (5 GB)
+# Adjust as needed
+
+[server]
+maxMessageSize = 5000
+# Also increase message size for large data transfers
